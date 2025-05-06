@@ -1,0 +1,383 @@
+```{r}
+data <- read.csv('data.csv', sep = ',')  # 如果是逗号
+data
+```
+
+```{r}
+# 假设数据存储在data$POST.OP.Hemodynamic.Stability..BP.HR中
+data_vector <- data$POST.OP.Hemodynamic.Stability..BP.HR
+
+# 创建一个新的数据框来存储拆分结果
+result <- data.frame(
+  PREOP_BP = character(length(data_vector)),
+  POD1_BP = character(length(data_vector)),
+  POD2_BP = character(length(data_vector)),
+  POD3_BP = character(length(data_vector)),
+  HR = character(length(data_vector)),
+  Other = character(length(data_vector)),
+  stringsAsFactors = FALSE
+)
+
+# 遍历数据并进行拆分
+for (i in 1:length(data_vector)) {
+  entry <- data_vector[i]
+  
+  # 如果条目为空，直接跳过
+  if (entry == "" || is.na(entry)) {
+    next
+  }
+  
+  # 初始化变量
+  preop_bp <- ""
+  pod1_bp <- ""
+  pod2_bp <- ""
+  pod3_bp <- ""
+  hr <- ""
+  other <- ""
+  
+  # 检查是否包含血压数据（以PREOP或preop开头）
+  if (grepl("PREOP|preop", entry, ignore.case = TRUE)) {
+    # 提取PREOP血压
+    preop_match <- regmatches(entry, regexpr("(PREOP|preop):\\s*\\d+/\\d+", entry, ignore.case = TRUE))
+    if (length(preop_match) > 0) {
+      preop_bp <- preop_match
+    }
+    
+    # 提取POD1血压
+    pod1_match <- regmatches(entry, regexpr("(POD|pod)1:\\s*\\d+/\\d+", entry, ignore.case = TRUE))
+    if (length(pod1_match) > 0) {
+      pod1_bp <- pod1_match
+    }
+    
+    # 提取POD2血压
+    pod2_match <- regmatches(entry, regexpr("(POD|pod)2:\\s*\\d+/\\d+", entry, ignore.case = TRUE))
+    if (length(pod2_match) > 0) {
+      pod2_bp <- pod2_match
+    }
+    
+    # 提取POD3血压（包括POD3及以后的数据，优先取POD3）
+    pod3_match <- regmatches(entry, regexpr("(POD|pod)3:\\s*\\d+/\\d+", entry, ignore.case = TRUE))
+    if (length(pod3_match) > 0) {
+      pod3_bp <- pod3_match
+    } else {
+      # 如果没有POD3，检查POD4（或其他更高天数）
+      pod4_match <- regmatches(entry, regexpr("(POD|pod)[4-9]:\\s*\\d+/\\d+", entry, ignore.case = TRUE))
+      if (length(pod4_match) > 0) {
+        pod3_bp <- pod4_match
+      }
+    }
+  }
+  
+  # 检查是否包含心率数据（TACHY或tachycardic）
+  if (grepl("TACHY|tachycardic", entry, ignore.case = TRUE)) {
+    # 提取心率相关部分
+    hr_match <- regmatches(entry, regexpr("(TACHY|tachycardic)[^;)]*((\\d+-\\d+)|(\\d+ to \\d+)|up to \\d+)?", entry, ignore.case = TRUE))
+    if (length(hr_match) > 0) {
+      hr <- hr_match
+    }
+  }
+  
+  # 提取其他观察（DESAT, HYPERTENSIVE, bleeding等）
+  if (grepl("DESAT|HYPERTENSIVE|bleeding", entry, ignore.case = TRUE)) {
+    # 提取非血压和非心率的部分
+    other_match <- regmatches(entry, regexpr("(DESAT|HYPERTENSIVE|bleeding)[^;)]*", entry, ignore.case = TRUE))
+    if (length(other_match) > 0) {
+      other <- paste(other_match, collapse = "; ")
+    }
+  }
+  
+  # 如果条目不含PREOP但含TACHY，单独处理
+  if (preop_bp == "" && grepl("TACHY|tachycardic", entry, ignore.case = TRUE)) {
+    hr <- entry
+  }
+  
+  # 如果条目不含PREOP和TACHY，放入Other
+  if (preop_bp == "" && hr == "" && !grepl("DESAT|HYPERTENSIVE|bleeding", entry, ignore.case = TRUE)) {
+    other <- entry
+  }
+  
+  # 将结果存入数据框
+  result$PREOP_BP[i] <- preop_bp
+  result$POD1_BP[i] <- pod1_bp
+  result$POD2_BP[i] <- pod2_bp
+  result$POD3_BP[i] <- pod3_bp
+  result$HR[i] <- hr
+  result$Other[i] <- other
+}
+
+# 清理空字符串
+result$PREOP_BP[result$PREOP_BP == ""] <- NA
+result$POD1_BP[result$POD1_BP == ""] <- NA
+result$POD2_BP[result$POD2_BP == ""] <- NA
+result$POD3_BP[result$POD3_BP == ""] <- NA
+result$HR[result$HR == ""] <- NA
+result$Other[result$Other == ""] <- NA
+
+# 查看前几行结果
+result
+
+# 可选：将结果保存到文件
+# write.csv(result, "hemodynamic_split_bp4.csv", row.names = FALSE)
+```
+```{r}
+# 假设你的数据存储在一个数据框中，列名为PREOP_BP, POD1_BP, POD2_BP, POD3_BP, HR
+# 示例数据
+
+data=result
+
+# 定义函数来提取收缩压和舒张压
+extract_bp_values <- function(bp_col) {
+  # 初始化收缩压和舒张压向量
+  systolic <- numeric(nrow(data))
+  diastolic <- numeric(nrow(data))
+  
+  for (i in 1:nrow(data)) {
+    if (!is.na(bp_col[i]) && bp_col[i] != "") {
+      # 提取血压值（如"preop: 122/79" -> "122/79"）
+      bp_value <- regmatches(bp_col[i], regexpr("\\d+/\\d+", bp_col[i]))[[1]]
+      if (length(bp_value) > 0) {
+        # 分割收缩压和舒张压
+        bp_split <- as.numeric(unlist(strsplit(bp_value, "/")))
+        systolic[i] <- bp_split[1]
+        diastolic[i] <- bp_split[2]
+      }
+    }
+  }
+  return(list(systolic = systolic, diastolic = diastolic))
+}
+
+# 提取每个时间点的收缩压和舒张压
+preop_bp <- extract_bp_values(data$PREOP_BP)
+pod1_bp <- extract_bp_values(data$POD1_BP)
+pod2_bp <- extract_bp_values(data$POD2_BP)
+pod3_bp <- extract_bp_values(data$POD3_BP)
+
+# 创建新的数据框
+result <- data.frame(
+  PREOP_SBP = preop_bp$systolic,
+  PREOP_DBP = preop_bp$diastolic,
+  POD1_SBP = pod1_bp$systolic,
+  POD1_DBP = pod1_bp$diastolic,
+  POD2_SBP = pod2_bp$systolic,
+  POD2_DBP = pod2_bp$diastolic,
+  POD3_SBP = pod3_bp$systolic,
+  POD3_DBP = pod3_bp$diastolic,
+  HR = data$HR,
+  stringsAsFactors = FALSE
+)
+
+# 将0值替换为NA（因为0表示未提取到有效血压值）
+result[result == 0] <- NA
+
+# 查看结果
+print(result)
+
+
+```
+
+```{r}
+result$Group <- data$Group
+result
+
+```
+```{r}
+# 加载必要的库
+library(dplyr)
+
+# 假设result数据框已准备好，基于之前的处理
+
+
+# 如果你的result数据来自其他来源（例如CSV），替换为以下代码
+# result <- read.csv("merged_bp_group_data.csv", stringsAsFactors = FALSE)
+
+# 检查Group列是否存在且值正确
+if (!"Group" %in% colnames(result)) {
+  stop("Error: 'Group' column not found in result. Available columns: ", paste(colnames(result), collapse = ", "))
+}
+cat("Unique values in Group:", unique(result$Group), "\n")
+
+# 检查Group是否只包含"Before"和"After"
+if (!all(unique(result$Group) %in% c("Before", "After"))) {
+  warning("Warning: Group column contains values other than 'Before' and 'After': ", paste(unique(result$Group), collapse = ", "))
+}
+
+# 定义要检测的变量
+variables <- c("PREOP_SBP", "PREOP_DBP", "POD1_SBP", "POD1_DBP", "POD2_SBP", "POD2_DBP", "POD3_SBP", "POD3_DBP")
+
+# 创建一个数据框存储正态性检验结果
+normality_results <- data.frame(
+  Variable = character(),
+  Group = character(),
+  Sample_Size = numeric(),
+  Shapiro_Wilk_p = numeric(),
+  Is_Normal = character(),
+  stringsAsFactors = FALSE
+)
+
+# 按Group分组，执行Shapiro-Wilk检验
+for (var in variables) {
+  for (group in c("Before", "After")) {
+    # 提取当前组和变量的数据
+    data_subset <- result %>% filter(Group == group) %>% pull(var)
+    
+    # 去除NA值
+    data_subset <- data_subset[!is.na(data_subset)]
+    
+    # 记录样本量
+    sample_size <- length(data_subset)
+    
+    # 初始化结果
+    p_value <- NA
+    is_normal <- "Insufficient data"
+    
+    # 如果样本量足够（>=3），执行Shapiro-Wilk检验
+    if (sample_size >= 3) {
+      shapiro_test <- shapiro.test(data_subset)
+      p_value <- shapiro_test$p.value
+      is_normal <- ifelse(p_value > 0.05, "Yes (p > 0.05)", "No (p <= 0.05)")
+    } else {
+      warning(sprintf("Variable %s in Group %s has insufficient data (n=%d) for Shapiro-Wilk test.", var, group, sample_size))
+    }
+    
+    # 添加结果到数据框
+    normality_results <- rbind(normality_results, data.frame(
+      Variable = var,
+      Group = group,
+      Sample_Size = sample_size,
+      Shapiro_Wilk_p = p_value,
+      Is_Normal = is_normal,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# 打印正态性检验结果
+cat("Normality Test Results (Shapiro-Wilk):\n")
+print(normality_results)
+
+
+```
+```{r}
+
+
+# 定义要检测的变量
+variables <- c("PREOP_SBP", "PREOP_DBP", "POD1_SBP", "POD1_DBP", "POD2_SBP", "POD2_DBP", "POD3_SBP", "POD3_DBP")
+
+# 创建一个数据框存储t检验和Wilcoxon检验结果
+test_results <- data.frame(
+  Variable = character(),
+  Test_Type = character(),
+  Sample_Size_Before = numeric(),
+  Sample_Size_After = numeric(),
+  Mean_Before = numeric(),
+  Mean_After = numeric(),
+  P_Value = numeric(),
+  Significant = character(),
+  stringsAsFactors = FALSE
+)
+
+# 按Group分组，执行t检验和Wilcoxon检验
+for (var in variables) {
+  # 提取当前变量的数据
+  data_before <- result %>% filter(Group == "Before") %>% pull(var)
+  data_after <- result %>% filter(Group == "After") %>% pull(var)
+  
+  # 去除NA值
+  data_before <- data_before[!is.na(data_before)]
+  data_after <- data_after[!is.na(data_after)]
+  
+  # 记录样本量
+  n_before <- length(data_before)
+  n_after <- length(data_after)
+  
+  # 计算均值
+  mean_before <- if (n_before > 0) mean(data_before) else NA
+  mean_after <- if (n_after > 0) mean(data_after) else NA
+  
+  # 初始化结果
+  t_p_value <- NA
+  wilcox_p_value <- NA
+  t_significant <- "Insufficient data"
+  wilcox_significant <- "Insufficient data"
+  
+  # t检验（需要每组至少2个非NA值）
+  if (n_before >= 2 && n_after >= 2) {
+    t_test_result <- t.test(data_before, data_after, paired = FALSE, var.equal = FALSE)  # Welch's t-test
+    t_p_value <- t_test_result$p.value
+    t_significant <- ifelse(t_p_value <= 0.05, "Yes (p <= 0.05)", "No (p > 0.05)")
+  } else {
+    warning(sprintf("Variable %s has insufficient data for t-test: Before (n=%d), After (n=%d)", var, n_before, n_after))
+  }
+  
+  # Wilcoxon检验（需要每组至少1个非NA值）
+  if (n_before >= 1 && n_after >= 1) {
+    wilcox_test_result <- wilcox.test(data_before, data_after, paired = FALSE)
+    wilcox_p_value <- wilcox_test_result$p.value
+    wilcox_significant <- ifelse(wilcox_p_value <= 0.05, "Yes (p <= 0.05)", "No (p > 0.05)")
+  } else {
+    warning(sprintf("Variable %s has insufficient data for Wilcoxon test: Before (n=%d), After (n=%d)", var, n_before, n_after))
+  }
+  
+  # 添加t检验结果
+  test_results <- rbind(test_results, data.frame(
+    Variable = var,
+    Test_Type = "t-test",
+    Sample_Size_Before = n_before,
+    Sample_Size_After = n_after,
+    Mean_Before = mean_before,
+    Mean_After = mean_after,
+    P_Value = t_p_value,
+    Significant = t_significant,
+    stringsAsFactors = FALSE
+  ))
+  
+  # 添加Wilcoxon检验结果
+  test_results <- rbind(test_results, data.frame(
+    Variable = var,
+    Test_Type = "Wilcoxon",
+    Sample_Size_Before = n_before,
+    Sample_Size_After = n_after,
+    Mean_Before = mean_before,
+    Mean_After = mean_after,
+    P_Value = wilcox_p_value,
+    Significant = wilcox_significant,
+    stringsAsFactors = FALSE
+  ))
+}
+
+# 打印检验结果
+cat("Test Results (t-test and Wilcoxon):\n")
+print(test_results)
+
+# 可选：保存结果到CSV文件
+write.csv(test_results, "t_test_wilcox_results.csv", row.names = FALSE)
+```
+
+
+```{r}
+# 正态性检验
+shapiro.test(data$`POST.OP.IV.Fluids..mL.`)
+shapiro.test(data$`LOS..days.`)
+shapiro.test(data$`INTRA.OPERATIVE.IV.FLUIDS..mL.`)
+# shapiro.test(data$`POST.OP.Hemodynamic.Stability..BP.HR.`)
+
+```
+
+
+
+```{r}
+# 根据 Group 进行 t 检验
+t.test(data$`POST.OP.IV.Fluids..mL` ~ data$Group)
+t.test(data$`LOS..days.` ~ data$Group)
+t.test(data$`INTRA.OPERATIVE.IV.FLUIDS..mL.` ~ data$Group)
+# t.test(data$`Hemodynamic stability` ~ data$Group)
+
+```
+
+
+
+
+
+
+
+
