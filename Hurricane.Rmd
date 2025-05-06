@@ -1,0 +1,699 @@
+---
+title: "IV Fluid Administration in Orthognathic Patients Before and After Hurricane Helene"
+output: word_document
+---
+## Background and Study Overview
+In September 2024, Hurricane Helene made landfall as a Category 4 storm, devastating parts of the Southeastern United States and causing catastrophic flooding in western North Carolina. This flooding led to the closure of Baxter International’s North Cove facility in Marion, a critical supplier responsible for approximately 60% of the U.S. intravenous (IV) fluid market. As a result, hospitals nationwide faced an acute IV fluid shortage and implemented conservation strategies, including administering oral hydration solutions (e.g., Gatorade) to patients who could tolerate them, using alternative hydration methods, and closely conserving and monitoring IV fluid usage.
+To assess the impact of Hurricane Helene on post-operative outcomes across different surgical procedures, a retrospective cohort study was done comparing patients who underwent orthognathic surgery in the 12 months prior to the shortage (pre-Hurricane Helene group: October 3, 2023 – October 3, 2024; n = 279) with those who underwent surgery in the four months following the hurricane (post-Hurricane Helene group: October 4, 2024 – February 14, 2025; n = 104).
+
+## Methods
+To assess the impact of Hurricane Helene on post-operative outcomes across different surgical procedures, we conducted a series of statistical and visual analyses using data from patients treated before and after the event. We first categorized the data by procedure and period (pre- vs. post-hurricane) and generated boxplots to visualize the distributions of key clinical outcomes, including PO intake on POD1, length of hospital stay, post-operative IV fluids, total IV fluid use, surgical time, and estimated blood loss.
+We also performed t-tests within each procedure group to evaluate whether observed differences were statistically significant. Where applicable, variables were analyzed in their raw units without transformation, and we accounted for missing data by filtering incomplete observations prior to testing. This multi-faceted approach allowed us to highlight potential procedural or systemic shifts in perioperative care associated with the hurricane. A normal distribution was assumed across all data when running t-tests.
+
+## Statistical Analysis
+
+```{r}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+
+before <- read_excel("data set research.xlsx", sheet = 1, skip = 1)
+after <- read_excel("data set research.xlsx", sheet = 2, skip = 1)
+
+head(before)
+head(after)
+```
+```{r}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+
+data <- read_excel("data set research.xlsx", sheet = 1, skip = 1)
+data2 <- read_excel("data set research.xlsx", sheet = 2, skip = 1)
+
+# Tag each dataset with period
+data$period <- "before"
+data2$period <- "after"
+
+data$`PO intake (mL) on POD 2 (if applicable)` <- as.character(data$`PO intake (mL) on POD 2 (if applicable)`)
+data2$`PO intake (mL) on POD 2 (if applicable)` <- as.character(data2$`PO intake (mL) on POD 2 (if applicable)`)
+
+# Then merge
+combined <- bind_rows(data, data2)
+```
+
+## Comparing the total IV fluid usage (total_fluid) among patients who underwent surgery before and after Hurricane Helene:
+
+
+```{r}
+# Rename and convert key columns
+names(combined)[names(combined) == "INTRA-OPERATIVE IV FLUIDS (mL)"] <- "intra_iv"
+names(combined)[names(combined) == "POST-OP IV Fluids (mL)"] <- "postop_iv"
+combined$period <- factor(combined$period, levels = c("before", "after"))
+combined$intra_iv <- as.numeric(combined$intra_iv)
+combined$postop_iv <- as.numeric(combined$postop_iv)
+combined$total_fluid <- combined$intra_iv + combined$postop_iv
+
+# Boxplot: Total fluids used before vs after
+
+ggplot(combined, aes(x = period, y = total_fluid, fill = period)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.2, color = "darkgray", alpha = 0.5) +
+  labs(title = "IV Fluid Usage Before vs After Hurricane Helene",
+       x = "Period",
+       y = "Total IV Fluids (mL)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Statistical test
+t.test(total_fluid ~ period, data = combined, var.equal = TRUE)
+
+
+```
+Based on the box plot, we observe that the median fluid usage is lower in the after group compared to the before group. The spread (IQR) is also smaller in the after group, suggesting more standardized fluid use, while the before group shows several extreme high outliers.
+
+The two-sample t-test is used to compare the means of two groups. From the t-test, the mean total fluid usage significantly decreased from approximately 1,867 mL to 1,429 mL after Hurricane Helene. This difference is statistically significant (p < 0.001), indicating it is highly unlikely that the change occurred by chance. The 95% confidence interval (−610 to −265 mL) suggests a true average reduction of 265–610 mL per patient.
+```{r}
+# Rename and convert LOS
+names(combined)[names(combined) == "LOS (days)"] <- "los"
+combined$los <- as.numeric(combined$los)
+
+# LOS comparison
+
+ggplot(combined, aes(x = period, y = los, fill = period)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.2, color = "darkgray", alpha = 0.5) +
+  labs(title = "Length of Stay Before vs After Hurricane Helene",
+       x = "Period",
+       y = "Length of Stay (days)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+library(car)
+leveneTest(data = combined, los ~ period, center = mean)
+t.test(los ~ period, data = combined, var.equal = TRUE)
+
+```
+Comparing the hospital LOS in days between patients treated before by Hurricane Helene and after.
+The box-plot tells us the median LOS is slightly higher in the “after” group and the overall spread is similar across both groups. There are more high outliers in the “before” group (up to 6 days), but both distributions are mostly centered around 1–2 days.
+This observation is statistically supported by a Welch Two-Sample t-test (p = 0.0488), indicating a significant increase in mean LOS from 1.49 to 1.67 days — an average increase of about 4 hours. Although clinically small, this increase may reflect downstream effects of the fluid conservation measures implemented during the shortage period.
+
+```{r}
+# Summary by patient
+summary_stats <- combined %>%
+  group_by(period) %>%
+  summarize(
+    mean_intra = mean(intra_iv, na.rm = TRUE),
+    mean_postop = mean(postop_iv, na.rm = TRUE),
+    mean_total = mean(total_fluid, na.rm = TRUE),
+    n = n()
+  )
+
+print(summary_stats)
+
+```
+```{r}
+cost_per_ml <- 0.50  # adjust if you have real cost data
+combined$fluid_cost <- combined$total_fluid * cost_per_ml
+
+combined %>%
+  group_by(period) %>%
+  summarize(mean_cost = mean(fluid_cost, na.rm = TRUE))
+
+```
+```{r}
+combined$emesis <- as.numeric(combined$`# EMESIS EVENTS`)
+combined$opioid <- as.numeric(combined$`FLOOR OPIOID USE`)
+combined$po1 <- as.numeric(combined$`PO intake (mL) on POD 1`)
+combined$po2 <- as.numeric(combined$`PO intake (mL) on POD 2 (if applicable)`)
+
+combined %>%
+  group_by(period) %>%
+  summarise(
+    n = n(),
+    avg_intra = mean(intra_iv, na.rm = TRUE),
+    avg_postop = mean(postop_iv, na.rm = TRUE),
+    avg_total = mean(total_fluid, na.rm = TRUE),
+    avg_los = mean(los, na.rm = TRUE),
+    avg_emesis = mean(emesis, na.rm = TRUE),
+    avg_opioid = mean(opioid, na.rm = TRUE),
+    avg_po1 = mean(po1, na.rm = TRUE),
+    avg_po2 = mean(po2, na.rm = TRUE)
+  )
+```
+Comparing the hospital LOS in days between patients treated before by Hurricane Helene and after.
+```{r}
+ggplot(combined, aes(x = period, y = los, fill = period)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.2, color = "darkgray", alpha = 0.5) +
+  labs(title = "Length of Stay Before vs After Hurricane Helene",
+       x = "Period",
+       y = "Length of Stay (days)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+t.test(los ~ period, data = combined)
+
+ggplot(combined, aes(x = period, y = emesis, fill = period)) +
+   geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.2, color = "darkgray", alpha = 0.5) +
+  labs(title = "Emesis Events Before vs After IV Fluid Shortage",
+       x = "Period",
+       y = "Emesis Events") +
+  theme_minimal() +
+  theme(legend.position = "none")
+leveneTest(data = combined, emesis ~ period, center = mean)
+t.test(emesis ~ period, data = combined, var.equal = TRUE)
+
+ggplot(combined, aes(x = period, y = opioid, fill =period)) +
+ geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.2, color = "darkgray", alpha = 0.5) +
+  labs(title = "Opioid Use Before vs After IV Fluid Shortage",
+        x = "Period",
+       y = "Opioid Usage") +
+  theme_minimal() +
+  theme(legend.position = "none")
+leveneTest(data = combined, opioid ~ period, center = mean)
+t.test(opioid ~ period, data = combined)
+
+```
+```{r}
+library(ggplot2)
+
+ggplot(combined, aes(x = period, y = emesis)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Emesis Events Before vs After IV Fluid Shortage")
+
+ggplot(combined, aes(x = period, y = opioid)) +
+  geom_boxplot(fill = "salmon") +
+  labs(title = "Opioid Use Before vs After IV Fluid Shortage")
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(combined, aes(x = period, y = los, fill = period)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.2, color = "darkgray", alpha = 0.5) +
+  labs(title = "Length of Stay Before vs After Hurricane Helene",
+       x = "Period",
+       y = "Length of Stay (days)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+ggplot(combined, aes(x = period, y = los, fill = period)) +
+  geom_violin(trim = FALSE, alpha = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  labs(title = "Distribution of LOS Before vs After Hurricane Helene",
+       y = "Length of Stay (days)", x = "Period") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+```
+```{r}
+library(ggcorrplot)
+library(dplyr)
+library(dplyr)
+
+
+# Select numeric variables for the correlation matrix
+numeric_vars <- combined %>%
+  select(total_fluid, intra_iv, postop_iv, los, emesis, opioid, po1, po2) %>%
+  mutate_all(as.numeric)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(numeric_vars, use = "complete.obs", method = "pearson")
+
+# Plot the heatmap
+ggcorrplot(cor_matrix,
+           method = "square",
+           type = "lower",
+           lab = TRUE,
+           lab_size = 3,
+           colors = c("red", "white", "blue"),
+           title = "Correlation Heatmap of Clinical Variables",
+           ggtheme = theme_minimal())
+
+```
+
+```{r}
+
+library(ggplot2)
+
+
+combined <- combined %>%
+  mutate(PROCEDURE = toupper(PROCEDURE))
+
+combined$period <- factor(combined$period, levels = c("before", "after"))
+
+
+ggplot(combined, aes(x = period, y = total_fluid, fill = period)) +
+  geom_boxplot(outlier.shape = NA, width = 0.5) +
+  geom_jitter(aes(color = period), width = 0.2, alpha = 0.4) +
+  facet_wrap(~ PROCEDURE, scales = "free_y") +
+  labs(
+    title = "Total IV Fluid Use by Procedure",
+    x = "Period",
+    y = "Total IV Fluid (mL)",
+    fill = "Period"
+  ) +
+  scale_fill_manual(values = c("after" = "#0072B2", "before" = "#D55E00")) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  ) +   theme(legend.position = "none")
+
+
+```
+```{r}
+# Get the list of unique procedures
+procedures <- unique(combined$PROCEDURE)
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each procedure
+for (proc in procedures) {
+  # Subset data for this procedure
+  subset_data <- combined[combined$PROCEDURE == proc, ]
+  
+  # Run t-test
+  test_result <- t.test(total_fluid ~ period, data = subset_data, var.equal = TRUE)
+  
+  # Calculate means
+  mean_before <- mean(subset_data$total_fluid[subset_data$period == "before"], na.rm = TRUE)
+  mean_after <- mean(subset_data$total_fluid[subset_data$period == "after"], na.rm = TRUE)
+  
+  # Add significance stars
+  p_val <- test_result$p.value
+  sig <- if (p_val < 0.001) {
+    "***"
+  } else if (p_val < 0.01) {
+    "**"
+  } else if (p_val < 0.05) {
+    "*"
+  } else {
+    "ns"
+  }
+  
+  # Store rounded results
+  results_list[[proc]] <- data.frame(
+    Procedure = proc,
+    Mean_Before = round(mean_before, 1),
+    Mean_After = round(mean_after, 1),
+    T_Statistic = round(test_result$statistic, 2),
+    P_Value = formatC(p_val, format = "e", digits = 2),
+    Conf_Low = round(test_result$conf.int[1], 1),
+    Conf_High = round(test_result$conf.int[2], 1),
+    Significance = sig,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Combine into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Print the clean table
+
+knitr::kable(results_df)
+```
+
+
+
+```{r}
+library(ggplot2)
+combined$period <- factor(combined$period, levels = c("before", "after"))
+
+ggplot(combined, aes(x = period, y = po1, fill = period)) +
+  geom_boxplot(outlier.shape = NA, width = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black") +
+  facet_wrap(~ PROCEDURE, scales = "free_y") +
+  labs(
+    title = "Post-Operative PO Intake by Procedure",
+    x = "Period",
+    y = "PO Intake on POD1 (mL)",
+    fill = "Period"
+  ) +
+  scale_fill_manual(values = c("before" = "#0072B2", "after" = "#D55E00")) +
+  theme_minimal()
+
+
+# Get the list of unique procedures
+procedures <- unique(combined$PROCEDURE)
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each procedure
+for (proc in procedures) {
+  # Subset data for this procedure
+  subset_data <- combined[combined$PROCEDURE == proc, ]
+  
+  # Run t-test
+  test_result <- t.test(po1 ~ period, data = subset_data, var.equal = TRUE)
+  
+  # Calculate means
+  mean_before <- mean(subset_data$po1[subset_data$period == "before"], na.rm = TRUE)
+  mean_after <- mean(subset_data$po1[subset_data$period == "after"], na.rm = TRUE)
+  
+  # Add significance stars
+  p_val <- test_result$p.value
+  sig <- if (p_val < 0.001) {
+    "***"
+  } else if (p_val < 0.01) {
+    "**"
+  } else if (p_val < 0.05) {
+    "*"
+  } else {
+    "ns"
+  }
+  
+  # Store rounded results
+  results_list[[proc]] <- data.frame(
+    Procedure = proc,
+    Mean_Before = round(mean_before, 1),
+    Mean_After = round(mean_after, 1),
+    T_Statistic = round(test_result$statistic, 2),
+    P_Value = formatC(p_val, format = "e", digits = 2),
+    Conf_Low = round(test_result$conf.int[1], 1),
+    Conf_High = round(test_result$conf.int[2], 1),
+    Significance = sig,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Combine into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Print the clean table
+
+knitr::kable(results_df)
+```
+```{r}
+ggplot(combined, aes(x = period, y = los, fill = period)) +
+  geom_boxplot(outlier.shape = NA, width = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black") +
+  facet_wrap(~ PROCEDURE, scales = "free_y") +
+  labs(
+    title = "Length of Stay by Procedure",
+    x = "Period",
+    y = "Length of Stay (days)",
+    fill = "Period"
+  ) +
+  scale_fill_manual(values = c("before" = "#0072B2", "after" = "#D55E00")) +
+  theme_minimal() 
+
+
+# Get the list of unique procedures
+procedures <- unique(combined$PROCEDURE)
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each procedure
+for (proc in procedures) {
+  # Subset data for this procedure
+  subset_data <- combined[combined$PROCEDURE == proc, ]
+  
+  # Run t-test
+  test_result <- t.test(los ~ period, data = subset_data, var.equal = TRUE)
+  
+  # Calculate means
+  mean_before <- mean(subset_data$los[subset_data$period == "before"], na.rm = TRUE)
+  mean_after <- mean(subset_data$los[subset_data$period == "after"], na.rm = TRUE)
+  
+  # Add significance stars
+  p_val <- test_result$p.value
+  sig <- if (p_val < 0.001) {
+    "***"
+  } else if (p_val < 0.01) {
+    "**"
+  } else if (p_val < 0.05) {
+    "*"
+  } else {
+    "ns"
+  }
+  
+  # Store rounded results
+  results_list[[proc]] <- data.frame(
+    Procedure = proc,
+    Mean_Before = round(mean_before, 1),
+    Mean_After = round(mean_after, 1),
+    T_Statistic = round(test_result$statistic, 2),
+    P_Value = formatC(p_val, format = "e", digits = 2),
+    Conf_Low = round(test_result$conf.int[1], 1),
+    Conf_High = round(test_result$conf.int[2], 1),
+    Significance = sig,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Combine into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Print the clean table
+
+knitr::kable(results_df)
+```
+```{r}
+ggplot(combined, aes(x = period, y = postop_iv, fill = period)) +
+  geom_boxplot(outlier.shape = NA, width = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black") +
+  facet_wrap(~ PROCEDURE, scales = "free_y") +
+  labs(
+    title = "Post-Operative IV Fluids by Procedure ",
+    x = "Period",
+    y = "Post-op IV Fluids (mL)",
+    fill = "Period"
+  ) +
+  scale_fill_manual(values = c("before" = "#0072B2", "after" = "#D55E00")) +
+  theme_minimal()
+
+# Get the list of unique procedures
+procedures <- unique(combined$PROCEDURE)
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each procedure
+for (proc in procedures) {
+  # Subset data for this procedure
+  subset_data <- combined[combined$PROCEDURE == proc, ]
+  
+  # Run t-test
+  test_result <- t.test(postop_iv ~ period, data = subset_data, var.equal = TRUE)
+  
+  # Calculate means
+  mean_before <- mean(subset_data$postop_iv[subset_data$period == "before"], na.rm = TRUE)
+  mean_after <- mean(subset_data$postop_iv[subset_data$period == "after"], na.rm = TRUE)
+  
+  # Add significance stars
+  p_val <- test_result$p.value
+  sig <- if (p_val < 0.001) {
+    "***"
+  } else if (p_val < 0.01) {
+    "**"
+  } else if (p_val < 0.05) {
+    "*"
+  } else {
+    "ns"
+  }
+  
+  # Store rounded results
+  results_list[[proc]] <- data.frame(
+    Procedure = proc,
+    Mean_Before = round(mean_before, 1),
+    Mean_After = round(mean_after, 1),
+    T_Statistic = round(test_result$statistic, 2),
+    P_Value = formatC(p_val, format = "e", digits = 2),
+    Conf_Low = round(test_result$conf.int[1], 1),
+    Conf_High = round(test_result$conf.int[2], 1),
+    Significance = sig,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Combine into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Print the clean table
+
+knitr::kable(results_df)
+```
+```{r}
+# EBL (mL)
+ggplot(combined, aes(x = period, y = `EBL (mL)`, fill = period)) +
+  geom_boxplot(outlier.shape = NA, width = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black") +
+  facet_wrap(~ PROCEDURE, scales = "free_y") +
+  labs(
+    title = "Estimated Blood Loss by Procedure",
+    x = "Period",
+    y = "EBL (mL)",
+    fill = "Period"
+  ) +
+  scale_fill_manual(values = c("before" = "#0072B2", "after" = "#D55E00")) +
+  theme_minimal()
+# Get the list of unique procedures
+procedures <- unique(combined$PROCEDURE)
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each procedure
+for (proc in procedures) {
+  # Subset data for this procedure
+  subset_data <- combined[combined$PROCEDURE == proc, ]
+  
+  # Run t-test
+  test_result <- t.test(subset_data$`EBL (mL)` ~ period, data = subset_data, var.equal = TRUE)
+  
+  # Calculate means
+  mean_before <- mean(subset_data$`EBL (mL)`[subset_data$period == "before"], na.rm = TRUE)
+  mean_after <- mean(subset_data$`EBL (mL)`[subset_data$period == "after"], na.rm = TRUE)
+  
+  # Add significance stars
+  p_val <- test_result$p.value
+  sig <- if (p_val < 0.001) {
+    "***"
+  } else if (p_val < 0.01) {
+    "**"
+  } else if (p_val < 0.05) {
+    "*"
+  } else {
+    "ns"
+  }
+  
+  # Store rounded results
+  results_list[[proc]] <- data.frame(
+    Procedure = proc,
+    Mean_Before = round(mean_before, 1),
+    Mean_After = round(mean_after, 1),
+    T_Statistic = round(test_result$statistic, 2),
+    P_Value = formatC(p_val, format = "e", digits = 2),
+    Conf_Low = round(test_result$conf.int[1], 1),
+    Conf_High = round(test_result$conf.int[2], 1),
+    Significance = sig,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Combine into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Print the clean table
+
+knitr::kable(results_df)
+```
+
+# SURGICAL TIME (min)
+```{r}
+ggplot(combined, aes(x = period, y = `SURGICAL TIME (min)`, fill = period)) +
+  geom_boxplot(outlier.shape = NA, width = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.3, color = "black") +
+  facet_wrap(~ PROCEDURE, scales = "free_y") +
+  labs(
+    title = "Surgical Time by Procedure",
+    x = "Period",
+    y = "Surgical Time (min)",
+    fill = "Period"
+  ) +
+  scale_fill_manual(values = c("before" = "#0072B2", "after" = "#D55E00")) +
+  theme_minimal()
+
+# Get the list of unique procedures
+procedures <- unique(combined$PROCEDURE)
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each procedure
+for (proc in procedures) {
+  # Subset data for this procedure
+  subset_data <- combined[combined$PROCEDURE == proc, ]
+  
+  # Run t-test
+  test_result <- t.test(subset_data$`SURGICAL TIME (min)` ~ period, data = subset_data, var.equal = TRUE)
+  
+  # Calculate means
+  mean_before <- mean(subset_data$`SURGICAL TIME (min)`[subset_data$period == "before"], na.rm = TRUE)
+  mean_after <- mean(subset_data$`SURGICAL TIME (min)`[subset_data$period == "after"], na.rm = TRUE)
+  
+  # Add significance stars
+  p_val <- test_result$p.value
+  sig <- if (p_val < 0.001) {
+    "***"
+  } else if (p_val < 0.01) {
+    "**"
+  } else if (p_val < 0.05) {
+    "*"
+  } else {
+    "ns"
+  }
+  
+  # Store rounded results
+  results_list[[proc]] <- data.frame(
+    Procedure = proc,
+    Mean_Before = round(mean_before, 1),
+    Mean_After = round(mean_after, 1),
+    T_Statistic = round(test_result$statistic, 2),
+    P_Value = formatC(p_val, format = "e", digits = 2),
+    Conf_Low = round(test_result$conf.int[1], 1),
+    Conf_High = round(test_result$conf.int[2], 1),
+    Significance = sig,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Combine into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Print the clean table
+
+knitr::kable(results_df)
+```
+```{r}
+library(dplyr)
+library(broom)
+library(purrr)
+
+vars_to_test <- c("po1", "los", "postop_iv", "total_fluid", "SURGICAL TIME (min)", "EBL (mL)" )
+
+t_test_results <- map_dfr(vars_to_test, function(var) {
+
+  temp_data <- combined %>%
+    filter(!is.na(.data[[var]])) %>%
+    select(PROCEDURE, period, all_of(var))
+
+  temp_data %>%
+    group_by(PROCEDURE) %>%
+    group_modify(~ {
+      formula <- as.formula(paste0("`", var, "` ~ period"))
+      res <- tryCatch(
+        t.test(formula, data = .x, var.equal = TRUE),
+        error = function(e) NULL
+      )
+      if (is.null(res)) {
+        tibble(p.value = NA, estimate = NA, conf.low = NA, conf.high = NA)
+      } else {
+        tidy(res) %>% select(p.value, estimate, conf.low, conf.high)
+      }
+    }) %>%
+    mutate(variable = var)
+})
+
+
+t_test_results <- t_test_results %>% select(variable, PROCEDURE, everything())
+
+print(t_test_results)
+
+```
+
+
